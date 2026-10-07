@@ -1,0 +1,191 @@
+"""
+Simulacion y analisis de senales con la Transformada de Fourier
+=================================================================
+
+Actividad: "Simulacion y analisis de senales con la transformada de Fourier"
+Universidad Ciudadana de Nuevo Leon
+
+Este script:
+  1. Define senales elementales en el dominio del tiempo
+     (pulso rectangular, funcion escalon, funcion senoidal).
+  2. Grafica cada senal en el dominio del tiempo.
+  3. Calcula su Transformada de Fourier con la FFT (np.fft.fft).
+  4. Grafica la magnitud y la fase del espectro de frecuencia.
+  5. Verifica tres propiedades de la Transformada de Fourier:
+       - Linealidad
+       - Desplazamiento en el tiempo (time shifting)
+       - Escalamiento en frecuencia (scaling)
+
+Autor: Atziri Isabel de la Rosa Silla
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+
+# ---------------------------------------------------------------------------
+# Configuracion general
+# ---------------------------------------------------------------------------
+OUT_DIR = os.path.join(os.path.dirname(__file__), "figures")
+os.makedirs(OUT_DIR, exist_ok=True)
+
+Fs = 1000.0          # Frecuencia de muestreo (Hz)
+T = 1.0 / Fs          # Periodo de muestreo
+N = 2048              # Numero de muestras
+t = np.arange(N) * T  # Vector de tiempo (segundos)
+
+plt.rcParams.update({"figure.figsize": (9, 4), "axes.grid": True})
+
+
+def save_fig(fig, name):
+    path = os.path.join(OUT_DIR, name)
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    print(f"Figura guardada: {path}")
+
+
+def plot_time(signal, title, filename, xlim=None):
+    fig, ax = plt.subplots()
+    ax.plot(t, signal, color="#1f77b4")
+    ax.set_title(title)
+    ax.set_xlabel("Tiempo (s)")
+    ax.set_ylabel("Amplitud")
+    if xlim:
+        ax.set_xlim(xlim)
+    save_fig(fig, filename)
+
+
+def fourier_spectrum(signal):
+    """Devuelve el eje de frecuencias, la magnitud y la fase (solo mitad positiva)."""
+    X = np.fft.fft(signal)
+    freqs = np.fft.fftfreq(N, d=T)
+    half = N // 2
+    freqs = freqs[:half]
+    mag = np.abs(X[:half]) / N * 2  # magnitud normalizada
+    phase = np.angle(X[:half])
+    # Para evitar fase ruidosa donde la magnitud es ~0
+    phase[mag < 1e-6] = 0
+    return freqs, mag, phase
+
+
+def plot_spectrum(signal, title, filename, xlim=(0, 50)):
+    freqs, mag, phase = fourier_spectrum(signal)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 6))
+    ax1.plot(freqs, mag, color="#d62728")
+    ax1.set_title(f"{title} - Magnitud del espectro")
+    ax1.set_xlabel("Frecuencia (Hz)")
+    ax1.set_ylabel("|X(f)|")
+    ax1.set_xlim(xlim)
+
+    ax2.plot(freqs, phase, color="#2ca02c")
+    ax2.set_title(f"{title} - Fase del espectro")
+    ax2.set_xlabel("Frecuencia (Hz)")
+    ax2.set_ylabel("Fase (rad)")
+    ax2.set_xlim(xlim)
+
+    save_fig(fig, filename)
+    return freqs, mag, phase
+
+
+# ---------------------------------------------------------------------------
+# 1. Definicion de las senales en el dominio del tiempo
+# ---------------------------------------------------------------------------
+
+# Pulso rectangular: amplitud 1 entre t=0.05s y t=0.15s
+rect = np.where((t >= 0.05) & (t <= 0.15), 1.0, 0.0)
+
+# Funcion escalon unitario: 0 antes de t=0.1s, 1 despues
+step = np.where(t >= 0.1, 1.0, 0.0)
+
+# Funcion senoidal: 5 Hz
+f0 = 5.0
+sinusoid = np.sin(2 * np.pi * f0 * t)
+
+# ---------------------------------------------------------------------------
+# 2. Visualizacion en el dominio del tiempo
+# ---------------------------------------------------------------------------
+plot_time(rect, "Pulso rectangular - dominio del tiempo", "01_rect_tiempo.png", xlim=(0, 0.3))
+plot_time(step, "Funcion escalon - dominio del tiempo", "02_step_tiempo.png", xlim=(0, 0.3))
+plot_time(sinusoid, "Senal senoidal (5 Hz) - dominio del tiempo", "03_sinusoid_tiempo.png", xlim=(0, 1))
+
+# ---------------------------------------------------------------------------
+# 3 y 4. Calculo de la FFT + Visualizacion del espectro (magnitud y fase)
+# ---------------------------------------------------------------------------
+plot_spectrum(rect, "Pulso rectangular", "04_rect_espectro.png", xlim=(0, 100))
+plot_spectrum(step, "Funcion escalon", "05_step_espectro.png", xlim=(0, 50))
+plot_spectrum(sinusoid, "Senal senoidal (5 Hz)", "06_sinusoid_espectro.png", xlim=(0, 20))
+
+# ---------------------------------------------------------------------------
+# 5. Verificacion de propiedades de la Transformada de Fourier
+# ---------------------------------------------------------------------------
+
+# --- Propiedad de linealidad ---
+# F{a*x1(t) + b*x2(t)} = a*F{x1(t)} + b*F{x2(t)}
+a, b = 2.0, 0.5
+combo_time = a * rect + b * sinusoid           # combinacion en el tiempo, luego FFT
+X_rect = np.fft.fft(rect)
+X_sin = np.fft.fft(sinusoid)
+combo_freq_expected = a * X_rect + b * X_sin   # combinacion de los espectros
+combo_freq_actual = np.fft.fft(combo_time)
+linearity_error = np.max(np.abs(combo_freq_actual - combo_freq_expected))
+print(f"\n[Linealidad] Error maximo entre FFT(a*x1+b*x2) y a*FFT(x1)+b*FFT(x2): {linearity_error:.2e}")
+
+fig, ax = plt.subplots()
+freqs = np.fft.fftfreq(N, d=T)[:N // 2]
+ax.plot(freqs, np.abs(combo_freq_actual[:N // 2]) / N * 2, label="FFT de (a*x1 + b*x2)", lw=3, alpha=0.6)
+ax.plot(freqs, np.abs(combo_freq_expected[:N // 2]) / N * 2, label="a*FFT(x1) + b*FFT(x2)", ls="--", color="black")
+ax.set_xlim(0, 100)
+ax.set_title("Propiedad de linealidad")
+ax.set_xlabel("Frecuencia (Hz)")
+ax.set_ylabel("|X(f)|")
+ax.legend()
+save_fig(fig, "07_propiedad_linealidad.png")
+
+# --- Propiedad de desplazamiento en el tiempo ---
+# F{x(t - t0)} = X(f) * e^(-j*2*pi*f*t0)  -> la magnitud NO cambia, la fase si
+t0 = 0.05  # 50 ms de desplazamiento
+shift_samples = int(t0 * Fs)
+rect_shifted = np.roll(rect, shift_samples)
+
+freqs_o, mag_o, phase_o = fourier_spectrum(rect)
+freqs_s, mag_s, phase_s = fourier_spectrum(rect_shifted)
+
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 6))
+ax1.plot(freqs_o, mag_o, label="Original", lw=3, alpha=0.6)
+ax1.plot(freqs_s, mag_s, label="Desplazada en el tiempo", ls="--", color="black")
+ax1.set_xlim(0, 100)
+ax1.set_title("Desplazamiento en el tiempo - Magnitud (no cambia)")
+ax1.set_xlabel("Frecuencia (Hz)")
+ax1.set_ylabel("|X(f)|")
+ax1.legend()
+
+ax2.plot(freqs_o, phase_o, label="Original")
+ax2.plot(freqs_s, phase_s, label="Desplazada en el tiempo")
+ax2.set_xlim(0, 100)
+ax2.set_title("Desplazamiento en el tiempo - Fase (cambia linealmente con f)")
+ax2.set_xlabel("Frecuencia (Hz)")
+ax2.set_ylabel("Fase (rad)")
+ax2.legend()
+save_fig(fig, "08_propiedad_desplazamiento_tiempo.png")
+
+# --- Propiedad de escalamiento en frecuencia (dualidad tiempo-frecuencia) ---
+# Si x(t) se comprime en el tiempo por un factor k > 1 (x(k*t)),
+# su espectro se expande en frecuencia por el mismo factor k.
+k = 2.0
+sinusoid_scaled = np.sin(2 * np.pi * (f0 * k) * t)  # senoidal de 10 Hz en vez de 5 Hz
+
+freqs_1, mag_1, _ = fourier_spectrum(sinusoid)
+freqs_2, mag_2, _ = fourier_spectrum(sinusoid_scaled)
+
+fig, ax = plt.subplots()
+ax.plot(freqs_1, mag_1, label=f"x(t): seno de {f0:.0f} Hz")
+ax.plot(freqs_2, mag_2, label=f"x(k*t): seno de {f0*k:.0f} Hz (k={k:.0f})", ls="--")
+ax.set_xlim(0, 20)
+ax.set_title("Propiedad de escalamiento en frecuencia")
+ax.set_xlabel("Frecuencia (Hz)")
+ax.set_ylabel("|X(f)|")
+ax.legend()
+save_fig(fig, "09_propiedad_escalamiento_frecuencia.png")
+
+print("\nListo. Todas las figuras se guardaron en la carpeta 'figures/'.")
